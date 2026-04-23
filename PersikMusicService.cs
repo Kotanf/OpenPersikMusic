@@ -64,9 +64,9 @@ namespace PersikMusic.Services
                 await request.DownloadAsync(memStream);
                 memStream.Position = 0;
 
-                // Создаем ридер. Используем WaveFileReader для WAV или RawSourceWaveStream для PSC
+                // Создаем ридер. Используем WaveFileReader для WAV или RawSourceWaveStream для FPSC
                 _reader = new WaveFileReader(memStream);
-
+                
                 // Инициализируем твой Hi-Fi движок
                 var sampleProvider = _reader.ToSampleProvider();
                 var hifiEngine = new PersikHiFiEngine(sampleProvider);

@@ -10,7 +10,7 @@ namespace PersikMusic.Core
     public static class PersikUpdater
     {
         // Ссылка на текстовый файл на твоем диске/сервере, где написана только версия (например, 10.0.600)
-        private const string VersionUrl = "https://google.com";
+        private const string VersionUrl = "https://googlne.com";
         // Прямая ссылка на сам установщик .exe
         private const string DownloadUrl = "https://yandex.ru";
 
