@@ -1,12 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿using PersikMusic.Models;
+using PersikMusic.Services;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using PersikMusic.Models;
-using PersikMusic.Services;
 
 namespace PersikMusic
 {
@@ -27,7 +24,8 @@ namespace PersikMusic
             LoadUserAsync();
 
             _timer.Interval = TimeSpan.FromMilliseconds(500);
-            _timer.Tick += (s, e) => {
+            _timer.Tick += (s, e) =>
+            {
                 if (!_isDragging && _audioService.GetProgress() > 0)
                     TimelineSlider.Value = _audioService.GetProgress();
             };

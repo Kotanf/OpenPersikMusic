@@ -1,5 +1,4 @@
 ﻿using NAudio.Wave;
-using System;
 
 namespace PersikMusic.Core
 {
@@ -8,28 +7,25 @@ namespace PersikMusic.Core
         private readonly ISampleProvider _source;
         public WaveFormat WaveFormat => _source.WaveFormat;
 
-        private float _currentGain = 1.0f;
+        // --- ПАРАМЕТРЫ МАСТЕРИНГА ---
+        private const float MasterGain = 1.12f;
+        private const float Ceiling = 0.95f;
 
-        // Noise tracking (очень мягкий)
-        private float _noiseEstimate = 0.0003f;
-        private readonly float _noiseAdapt;
+        // --- СОСТОЯНИЯ ФИЛЬТРОВ (5 полос) ---
+        private float[] _lpL = new float[5], _lpR = new float[5];
 
-        // Limiter
-        private readonly float _attack;
-        private readonly float _release;
-        private readonly float _targetGain = 1.4f; // громкость выше
+        // --- ДИНАМИКА (Компрессия) ---
+        private float[] _envL = new float[5], _envR = new float[5];
+        private readonly float[] _thresholds = { 0.6f, 0.7f, 0.75f, 0.7f, 0.6f };
+        private readonly float[] _ratios = { 1.8f, 1.4f, 1.2f, 1.3f, 1.5f };
 
-        // HF tracking
-        private float _hfTrack = 0f;
+        // --- ПСИХОАКУСТИКА ---
+        private float _dcL, _dcR;
+        private float _prevL, _prevR;
 
         public PersikHiFiEngine(ISampleProvider source)
         {
             _source = source;
-            float sr = source.WaveFormat.SampleRate;
-
-            _attack = (float)Math.Exp(-1.0 / (0.002 * sr));
-            _release = (float)Math.Exp(-1.0 / (0.080 * sr));
-            _noiseAdapt = (float)Math.Exp(-1.0 / (0.5 * sr));
         }
 
         public int Read(float[] buffer, int offset, int count)
@@ -37,122 +33,132 @@ namespace PersikMusic.Core
             int read = _source.Read(buffer, offset, count);
             if (read == 0) return 0;
 
-            int ch = _source.WaveFormat.Channels;
+            int channels = WaveFormat.Channels;
 
-            for (int i = 0; i < read; i += ch)
+            for (int i = 0; i < read; i += channels)
             {
-                float L = buffer[offset + i];
-                float R = (ch > 1 && i + 1 < read) ? buffer[offset + i + 1] : L;
+                float rawL = buffer[offset + i];
+                float rawR = (channels > 1) ? buffer[offset + i + 1] : rawL;
 
-                float level = Math.Max(Math.Abs(L), Math.Abs(R));
+                // 1. DC OFFSET REMOVAL (Чистка инфразвука)
+                _dcL += 0.01f * (rawL - _dcL);
+                _dcR += 0.01f * (rawR - _dcR);
+                float curL = rawL - _dcL;
+                float curR = rawR - _dcR;
 
-                // =====================================================
-                // 1. VERY SOFT NOISE REDUCTION (НЕ портит звук)
-                // =====================================================
-                if (level < _noiseEstimate * 1.3f)
+                // 2. MULTIBAND DECOMPOSITION (5 дорожек)
+                // Полосы: Sub, Low-Mid, Mid, Presence, Air
+                float[] bandsL = SplitBands(curL, _lpL);
+                float[] bandsR = SplitBands(curR, _lpR);
+
+                float finalL = 0, finalR = 0;
+
+                for (int b = 0; b < 5; b++)
                 {
-                    _noiseEstimate = _noiseEstimate * _noiseAdapt +
-                                     level * (1 - _noiseAdapt);
+                    float bL = bandsL[b];
+                    float bR = bandsR[b];
+
+                    // 3. ADAPTIVE COMPRESSION (Для каждой дорожки)
+                    float rmsL = Math.Abs(bL);
+                    float rmsR = Math.Abs(bR);
+                    _envL[b] = _envL[b] < rmsL ? Smooth(_envL[b], rmsL, 0.1f) : Smooth(_envL[b], rmsL, 0.001f);
+                    _envR[b] = _envR[b] < rmsR ? Smooth(_envR[b], rmsR, 0.1f) : Smooth(_envR[b], rmsR, 0.001f);
+
+                    bL = ApplyCompression(bL, _envL[b], b);
+                    bR = ApplyCompression(bR, _envR[b], b);
+
+                    // 4. FREQUENCY STEREO IMAGING
+                    float mid = (bL + bR) * 0.5f;
+                    float side = (bL - bR) * 0.5f;
+
+                    // Умное расширение: бас собран, верх разнесен
+                    float width = b switch
+                    {
+                        0 => 0.95f, // Sub: почти моно для плотности
+                        1 => 1.05f, // Low-Mid: легкий объем
+                        2 => 1.15f, // Mid: гитары
+                        3 => 1.30f, // Presence: вокал и детальность
+                        4 => 1.45f, // Air: супер-стерео
+                        _ => 1.0f
+                    };
+
+                    side *= width;
+                    bL = mid + side;
+                    bR = mid - side;
+
+                    finalL += bL;
+                    finalR += bR;
                 }
 
-                float threshold = _noiseEstimate * 1.8f;
-                float noiseFactor = 1f;
+                // 5. TRANSIENT RECOVERY (Возврат четкости)
+                float attackL = finalL - _prevL;
+                float attackR = finalR - _prevR;
+                _prevL = finalL; _prevR = finalR;
+                finalL += attackL * 0.15f;
+                finalR += attackR * 0.15f;
 
-                if (level < threshold)
-                {
-                    float r = level / threshold;
-                    noiseFactor = 0.7f + 0.3f * r; // мягкое подавление
-                }
+                // 6. ANALOG WARMTH (Мягкое насыщение)
+                finalL = (float)Math.Tanh(finalL * 1.05f);
+                finalR = (float)Math.Tanh(finalR * 1.05f);
 
-                L *= noiseFactor;
-                R *= noiseFactor;
-
-                // =====================================================
-                // 2. LIGHT DE-HISS (без "мыла")
-                // =====================================================
-                float hf = ((L + R) * 0.5f) - _hfTrack;
-                _hfTrack += hf * 0.05f;
-
-                float brightness = Math.Abs(hf);
-                float hissCut = 1.0f - Math.Clamp(brightness * 1.0f, 0f, 0.2f);
-
-                L *= hissCut;
-                R *= hissCut;
-
-                // =====================================================
-                // 3. MID/SIDE HI-FI
-                // =====================================================
-                float mid = (L + R) * 0.5f;
-                float side = (L - R) * 0.5f;
-
-                mid = AddWarmth(mid);
-
-                mid *= 0.97f;
-                side *= 1.15f;
-
-                L = mid + side;
-                R = mid - side;
-
-                // =====================================================
-                // 4. LOUDNESS (makeup gain)
-                // =====================================================
-                float makeup = 1.15f;
-                L *= makeup;
-                R *= makeup;
-
-                // =====================================================
-                // 5. TRUE PEAK LIMITER (без клиппинга)
-                // =====================================================
-                float peak = Math.Max(Math.Abs(L), Math.Abs(R)) + 1e-6f;
-
-                float desired = _targetGain;
-
-                if (peak * desired > 0.98f)
-                    desired = 0.98f / peak;
-
-                if (desired < _currentGain)
-                    _currentGain = desired + _attack * (_currentGain - desired);
-                else
-                    _currentGain = desired + _release * (_currentGain - desired);
-
-                L *= _currentGain;
-                R *= _currentGain;
-
-                // =====================================================
-                // 6. VERY SOFT CLIP (на всякий случай)
-                // =====================================================
-                L = SoftClip(L);
-                R = SoftClip(R);
-
-                // финальная защита
-                L = Math.Clamp(L, -0.99f, 0.99f);
-                R = Math.Clamp(R, -0.99f, 0.99f);
-
-                buffer[offset + i] = L;
-                if (ch > 1 && i + 1 < read)
-                    buffer[offset + i + 1] = R;
+                // 7. FINAL MASTERING LIMITER
+                buffer[offset + i] = PushLimit(finalL * MasterGain);
+                if (channels > 1)
+                    buffer[offset + i + 1] = PushLimit(finalR * MasterGain);
             }
 
             return read;
         }
 
-        private float AddWarmth(float x)
+        private float[] SplitBands(float sample, float[] states)
         {
-            if (Math.Abs(x) < 0.3f)
-                return x;
+            // Упрощенный каскадный фильтр (Crossover)
+            float[] bands = new float[5];
+            float s = sample;
 
-            return x * (1.0f - (x * x * 0.12f));
+            float f1 = 0.08f; // 200Hz
+            float f2 = 0.20f; // 1kHz
+            float f3 = 0.50f; // 5kHz
+            float f4 = 0.80f; // 12kHz
+
+            states[0] += f1 * (s - states[0]);
+            bands[0] = states[0]; // SUB
+
+            states[1] += f2 * (s - states[1]);
+            bands[1] = states[1] - states[0]; // LOW-MID
+
+            states[2] += f3 * (s - states[2]);
+            bands[2] = states[2] - states[1]; // MID
+
+            states[3] += f4 * (s - states[3]);
+            bands[3] = states[3] - states[2]; // PRESENCE
+
+            bands[4] = s - states[3]; // AIR
+
+            return bands;
         }
 
-        private float SoftClip(float x)
+        private float ApplyCompression(float sample, float env, int band)
+        {
+            float thresh = _thresholds[band];
+            if (env <= thresh) return sample;
+
+            float gainReduction = 1.0f - (env - thresh) * (1.0f - 1.0f / _ratios[band]);
+            return sample * Math.Max(0.5f, gainReduction);
+        }
+
+        private float Smooth(float cur, float target, float t)
+            => cur + t * (target - cur);
+
+        private float PushLimit(float x)
         {
             float a = Math.Abs(x);
+            if (a <= 0.88f) return x;
 
-            if (a < 0.9f)
-                return x;
-
-            float y = 0.9f + (a - 0.9f) / (1.0f + (a - 0.9f) * 5.0f);
-            return x > 0 ? y : -y;
+            // Look-ahead soft-knee approximation
+            float over = a - 0.88f;
+            float res = 0.88f + (Ceiling - 0.88f) * (float)Math.Tanh(over * 2.2f);
+            return x > 0 ? res : -res;
         }
     }
 }

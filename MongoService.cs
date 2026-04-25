@@ -13,37 +13,50 @@ namespace PersikMusic.Services
     {
         private readonly IMongoCollection<User> _users;
         private readonly IMongoCollection<Playlist> _playlists;
+        private static bool _isSerializerRegistered;
 
         public MongoService()
         {
-            // 1. ГОВОРИМ ДРАЙВЕРУ, КАК ЖИТЬ С GUID
-            // Это нужно вызвать ОДИН РАЗ до создания клиента
-#pragma warning disable CS0618 // Подавляем предупреждение об устаревании, так как это стандартный фикс
-            BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
-#pragma warning restore CS0618
+            // 1. Безопасная регистрация GUID
+            if (!_isSerializerRegistered)
+            {
+                BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
+                _isSerializerRegistered = true;
+            }
 
-            // сюда ссылку на базу данных
-            string connectionString = "";
+            string connectionString = "СЮДА СВЮ БАЗУ ДАННЫХ";
 
-            var client = new MongoClient(connectionString);
+            var settings = MongoClientSettings.FromConnectionString(connectionString);
+
+            settings.MaxConnectionPoolSize = 100;
+
+            var client = new MongoClient(settings);
             var database = client.GetDatabase("PersikMusicDB");
 
             _users = database.GetCollection<User>("Users");
             _playlists = database.GetCollection<Playlist>("Playlists");
+
+            _ = EnsureIndexesAsync();
         }
 
-        // ПОЛУЧЕНИЕ ИЛИ СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ
+        private async Task EnsureIndexesAsync()
+        {
+            var userIndex = new CreateIndexModel<User>(Builders<User>.IndexKeys.Ascending(u => u.Username));
+            await _users.Indexes.CreateOneAsync(userIndex).ConfigureAwait(false);
+
+            var playlistIndex = new CreateIndexModel<Playlist>(Builders<Playlist>.IndexKeys.Ascending(p => p.OwnerId));
+            await _playlists.Indexes.CreateOneAsync(playlistIndex).ConfigureAwait(false);
+        }
+
         public async Task<User> GetOrCreateUser(string username)
         {
-            // Проверка 1: Если коллекция не инициализирована (NullReferenceException)
-            if (_users == null)
-            {
-                throw new Exception("Ошибка: Коллекция пользователей MongoDB не инициализирована. Проверьте подключение.");
-            }
+            if (string.IsNullOrEmpty(username)) return null!;
 
             try
             {
-                var user = await _users.Find(u => u.Username == username).FirstOrDefaultAsync();
+                var user = await _users.Find(u => u.Username == username)
+                                      .FirstOrDefaultAsync()
+                                      .ConfigureAwait(false);
 
                 if (user == null)
                 {
@@ -51,32 +64,29 @@ namespace PersikMusic.Services
                     {
                         Id = Guid.NewGuid(),
                         Username = username,
-                        // Проверка 2: Гарантируем, что список не null
                         FavoriteDriveIds = new List<string>()
                     };
-                    await _users.InsertOneAsync(user);
+                    await _users.InsertOneAsync(user).ConfigureAwait(false);
                 }
 
-                // На всякий случай проверяем список у найденного юзера
-                if (user.FavoriteDriveIds == null) user.FavoriteDriveIds = new List<string>();
-
+                user.FavoriteDriveIds ??= new List<string>();
                 return user;
             }
             catch (Exception ex)
             {
-                // Если здесь вылетает FormatException (Guid), значит в базе старые «кривые» данные
-                throw new Exception($"Ошибка при работе с пользователем: {ex.Message}");
+                throw new Exception($"DB Error: {ex.Message}");
             }
         }
 
-        // СОХРАНЕНИЕ ЛАЙКОВ (ИЗБРАННОГО)
         public async Task UpdateFavorites(Guid userId, List<string> favorites)
         {
+            var filter = Builders<User>.Filter.Eq(u => u.Id, userId);
             var update = Builders<User>.Update.Set(u => u.FavoriteDriveIds, favorites);
-            await _users.UpdateOneAsync(u => u.Id == userId, update);
+
+            await _users.UpdateOneAsync(filter, update, new UpdateOptions { IsUpsert = false })
+                        .ConfigureAwait(false);
         }
 
-        // СОЗДАНИЕ ПЛЕЙЛИСТА
         public async Task CreatePlaylist(string name, Guid ownerId)
         {
             var playlist = new Playlist
@@ -86,13 +96,14 @@ namespace PersikMusic.Services
                 OwnerId = ownerId,
                 SongIds = new List<string>()
             };
-            await _playlists.InsertOneAsync(playlist);
+            await _playlists.InsertOneAsync(playlist).ConfigureAwait(false);
         }
 
-        // ПОЛУЧЕНИЕ ПЛЕЙЛИСТОВ ПОЛЬЗОВАТЕЛЯ
         public async Task<List<Playlist>> GetUserPlaylists(Guid userId)
         {
-            return await _playlists.Find(p => p.OwnerId == userId).ToListAsync();
+            return await _playlists.Find(p => p.OwnerId == userId)
+                                  .ToListAsync()
+                                  .ConfigureAwait(false);
         }
     }
 }

@@ -1,5 +1,5 @@
-﻿using System.Windows;
-using PersikMusic.Core; // Обязательно добавь этот using, чтобы App видел папку Core
+﻿using PersikMusic.Core; // Обязательно добавь этот using, чтобы App видел папку Core
+using System.Windows;
 
 namespace PersikMusic
 {

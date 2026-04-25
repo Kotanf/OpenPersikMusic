@@ -14,7 +14,7 @@ namespace PersikMusic.Core
         // Прямая ссылка на сам установщик .exe
         private const string DownloadUrl = "https://yandex.ru";
 
-        public static string CurrentVersion = "10.0.800";
+        public static string CurrentVersion = "10.0.860";
 
         public static async Task CheckForUpdates()
         {
@@ -29,7 +29,7 @@ namespace PersikMusic.Core
                     {
                         var result = MessageBox.Show(
                             $"Доступна новая версия {latestVersion}! Скачать и обновить?",
-                            "Обновление Персик Музыки",
+                            "Обновление Открытой Персик Музыки",
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Information);
 
