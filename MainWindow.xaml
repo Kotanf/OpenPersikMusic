@@ -61,10 +61,10 @@
 
                 <TextBlock Text="МЕНЮ" Foreground="#555" FontSize="11" FontWeight="Bold" Margin="15,0,0,10"/>
                 <TextBlock Text="ПЛЕЙЛИСТЫ" Foreground="#555" FontSize="11" FontWeight="Bold" Margin="15,20,0,10"/>
-                <Button Content="🏠 Главная" Tag="1cHlbu0R6Aqv_mn6ngA1LIHnAP3JSvfRi" Style="{StaticResource NavButton}" Click="Folder_Click"/>
-                <Button Content="🎵 Оригинальные песни" Tag="1K0jZoEqLOyJ6LQFDMbzB17HMzYDKNix9" Style="{StaticResource NavButton}" Click="Folder_Click"/>
-                <Button Content="🎖️ 9 Мая" Tag="1tmBv5v0jwjeuvTZyITztT8R1HHJAIlH-" Style="{StaticResource NavButton}" Click="Folder_Click"/>
-                <Button Content="❤️ Пятничные новинки!" Tag="1lkCZbAKDVDgcx2K6dHbxH-DzPPIflVUM" Style="{StaticResource NavButton}" Click="Folder_Click"/>
+                <Button Content="🏠 Главная" Tag="Сюда вставь ID папки, который плучил на диске по ссылке" Style="{StaticResource NavButton}" Click="Folder_Click"/>
+                <Button Content="🎵 Оригинальные песни" Tag="Сюда вставь ID папки, который плучил на диске по ссылке" Style="{StaticResource NavButton}" Click="Folder_Click"/>
+                <Button Content="🎖️ 9 Мая" Tag="Сюда вставь ID папки, который плучил на диске по ссылке" Style="{StaticResource NavButton}" Click="Folder_Click"/>
+                <Button Content="❤️ Пятничные новинки!" Tag="Сюда вставь ID папки, который плучил на диске по ссылке" Style="{StaticResource NavButton}" Click="Folder_Click"/>
             </StackPanel>
         </Border>
 
@@ -156,7 +156,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock Text="Hi-Fi Эксклюзив!" Foreground="#4ADE80" FontWeight="Bold" FontSize="10" VerticalAlignment="Center" Margin="0,0,20,0"/>
                     <TextBlock Text="🔊" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <Slider x:Name="VolumeSlider" Width="107" Value="0.7" Maximum="1" ValueChanged="Volume_Changed" VerticalAlignment="Center" Foreground="{StaticResource AccentColor}"/>
+                    <Slider x:Name="VolumeSlider" Width="116" Value="0.7" Maximum="1" ValueChanged="Volume_Changed" VerticalAlignment="Center" Foreground="{StaticResource AccentColor}"/>
                 </StackPanel>
             </Grid>
         </Border>

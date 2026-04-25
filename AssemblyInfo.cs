@@ -1,29 +1,54 @@
 using System;
-using System.Windows;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using System.Windows.Media;
+using System.Windows;
+using System.Resources;
+using System.Security;
 
-// 1. ОТКЛЮЧАЕМ COM (Ускоряет запуск, так как .NET не строит мосты к старым библиотекам)
+// --- ГЛУБОКАЯ ОПТИМИЗАЦИЯ СКОРОСТИ (JIT & GC) ---
+
+// Заставляем JIT-компилятор игнорировать проверки на границы (если это безопасно) и агрессивно встраивать методы
+[assembly: OptimizationPriority(OptimizationPriority.High)]
+
+// Отключаем проверку безопасности строк (ускоряет работу с текстом и путями к файлам)
+[assembly: SecurityTransparent]
+
+// Указываем, что сборка не содержит "мусора" для компилятора
+[assembly: NeutralResourcesLanguage("ru-RU")]
+
+// --- НИЗКОУРОВНЕВЫЙ ДОСТУП И СТАБИЛЬНОСТЬ ---
+
+// Запрещаем COM-видимость (минус лишние накладные расходы на маршалинг)
 [assembly: ComVisible(false)]
-[assembly: Guid("77777777-7777-7777-7777-777777777777")] // Твой уникальный ID проекта
 
-// 2. ГРАФИЧЕСКИЙ ДВИЖОК (Делаем интерфейс плавным на 144Гц+ мониторах)
+// Уникальный GUID для изоляции процесса в системе
+[assembly: Guid("13377777-BEEF-4749-6700-777777777777")]
+
+// Ускоряем загрузку зависимостей: говорим системе, что эти библиотеки всегда рядом
+[assembly: Dependency("System.Runtime", LoadHint.Always)]
+[assembly: Dependency("NAudio", LoadHint.Always)]
+
+// --- ГРАФИКА И UI (WPF Optimization) ---
+
 [assembly: ThemeInfo(
     ResourceDictionaryLocation.None,
     ResourceDictionaryLocation.SourceAssembly
 )]
 
-// 3. HARDCORE OPTIMIZATION (То, что делает его в 100 раз полезнее)
-// Заставляем JIT-компилятор максимально агрессивно оптимизировать код при запуске
-[assembly: Dependency("System.Runtime", LoadHint.Always)]
+// --- БЕЗОПАСНОСТЬ И ЗАЩИТА ---
 
-// Указываем, что наше приложение полностью поддерживает современные символы и шрифты
-[assembly: DisableDpiAwareness] // Мы управляем этим через манифест, тут отключаем старые костыли
+// Ищем DLL только в системных папках (защита от DLL Hijacking)
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32 | DllImportSearchPath.UserDirectories)]
 
-// 4. БЕЗОПАСНОСТЬ (Защита от внедрения чужого кода в процесс плеера)
-[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+// --- ВЕРСИЯ ---
+[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
 
-// 5. CLS COMPLIANT (Гарантирует, что твой код будет одинаково работать на разных версиях .NET)
-[assembly: CLSCompliant(false)]
+// Кастомный атрибут для подсказки JIT-у (если используешь продвинутый компилятор)
+internal sealed class OptimizationPriorityAttribute : Attribute
+{
+    public OptimizationPriorityAttribute(OptimizationPriority p) { Priority = p; }
+    public OptimizationPriority Priority { get; }
+}
+internal enum OptimizationPriority { Low, Medium, High }

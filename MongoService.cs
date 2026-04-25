@@ -22,11 +22,10 @@ namespace PersikMusic.Services
             BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
 #pragma warning restore CS0618
 
-            // сюда ссылку на базу данных
-            string connectionString = "";
+            string connectionString = "вставьте своё";
 
             var client = new MongoClient(connectionString);
-            var database = client.GetDatabase("PersikMusicDB");
+            var database = client.GetDatabase("OpenPersikMusicDB");
 
             _users = database.GetCollection<User>("Users");
             _playlists = database.GetCollection<Playlist>("Playlists");
